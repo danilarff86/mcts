@@ -108,8 +108,11 @@ struct TicTacToeState : public State
     {
         auto temp_state = std::make_shared< TicTacToeState >( *this );
 
+        GameState game_state{};
+
         // Keep playing until game is over
-        while ( !gameOver( *temp_state ) )
+        while ( /*!gameOver( *temp_state )*/ ( game_state = gameState( *this, *temp_state ) )
+                == GameState::e_State_InProgress )
         {
             auto possible_moves = getPossibleMoves( *temp_state );
 
@@ -125,7 +128,16 @@ struct TicTacToeState : public State
         // gameResult should take into account the original state (state)
         // and return a positive value if the person won, or a negative
         // value if they lost
-        return gameResult( *this, *temp_state );
+        /*return gameResult( *this, *temp_state );*/
+        switch ( game_state )
+        {
+        case GameState::e_State_Hit:
+            return 1;
+        case GameState::e_state_Miss:
+            return -1;
+        default:
+            return 0;
+        }
     }
 
 private :
@@ -158,28 +170,28 @@ private :
         return ( *state.m_board )[ row ][ col ] == CellState::e_Cell_Available;
     }
 
-    static bool
-    gameOver( TicTacToeState const& state )
-    {
-        // TODO: Implement
-    }
+//     static bool
+//     gameOver( TicTacToeState const& state )
+//     {
+//         // TODO: Implement
+//     }
 
     static void
     playMove( Board& board, bool turn, const Cell& cell )
     {
-        // TODO: Implement
+        board[ cell.row ][ cell.col ]
+            = turn ? CellState::e_Cell_Turn_True : CellState::e_Cell_Turn_False;
     }
 
-    static int
-    gameResult( TicTacToeState const& state, TicTacToeState const& temp_state )
-    {
-        // TODO: Implement
-    }
+//     static int
+//     gameResult( TicTacToeState const& state, TicTacToeState const& temp_state )
+//     {
+//         // TODO: Implement
+//     }
 
     static GameState
     gameState( TicTacToeState const& state, TicTacToeState const& temp_state )
     {
-        // TODO: Implement
         auto const& brd = *state.m_board;
         auto const sz = state.m_board->size( );
 
@@ -231,6 +243,42 @@ private :
         }
 
         // Check diagonals
+        auto cnt_diagonal1_turn_true = 0;
+        auto cnt_diagonal1_turn_false = 0;
+        auto cnt_diagonal2_turn_true = 0;
+        auto cnt_diagonal2_turn_false = 0;
+
+        for ( size_t i = 0; i < sz; ++i )
+        {
+            switch ( brd[ i ][ i ] )
+            {
+            case CellState::e_Cell_Turn_True:
+                ++cnt_diagonal1_turn_true;
+                break;
+            case CellState::e_Cell_Turn_False:
+                ++cnt_diagonal1_turn_false;
+                break;
+            }
+            switch ( brd[ i ][ sz - i - 1 ] )
+            {
+            case CellState::e_Cell_Turn_True:
+                ++cnt_diagonal2_turn_true;
+                break;
+            case CellState::e_Cell_Turn_False:
+                ++cnt_diagonal2_turn_false;
+                break;
+            }
+        }
+
+        if ( cnt_diagonal1_turn_true == sz || cnt_diagonal2_turn_true == sz )
+        {
+            return state.m_turn ? GameState::e_State_Hit : GameState::e_state_Miss;
+        }
+
+        if ( cnt_diagonal1_turn_false == sz || cnt_diagonal2_turn_false == sz )
+        {
+            return !state.m_turn ? GameState::e_State_Hit : GameState::e_state_Miss;
+        }
 
         return cnt_available > 0 ? GameState::e_State_InProgress : GameState::e_State_Draw;
     }
@@ -243,6 +291,12 @@ private:
 
 struct MctsNode : public std::enable_shared_from_this< MctsNode >
 {
+    static MctsNodePtr
+    createMctsRoot( StatePtr state )
+    {
+        return std::make_shared< MctsNode >( state, nullptr );
+    }
+
     MctsNode( StatePtr state, MctsNodePtr parent )
         : m_state( state )  // The current state of the board
         , m_parent( parent )
