@@ -1,0 +1,5 @@
+cmake_minimum_required (VERSION 2.6)
+set (CMAKE_CXX_STANDARD 11)
+project (MonteCarloTreeSearch)
+set(SOURCES main.cpp MonteCarloTreeSearch.cpp MonteCarloTreeSearch.h)
+add_executable(monte_carlo_tree_search ${SOURCES})
