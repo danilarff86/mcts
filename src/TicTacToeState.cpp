@@ -172,6 +172,7 @@ TicTacToeState::play_move( TicTacToeState& state, const Cell& cell )
 {
     state.m_board[ cell.row ][ cell.col ]
         = state.m_my_turn ? CellState::e_Cell_Mine : CellState::e_Cell_Opponent;
+    state.m_last_move = cell;
     state.m_my_turn = !state.m_my_turn;
 }
 

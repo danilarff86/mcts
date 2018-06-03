@@ -48,11 +48,14 @@ MctsNode::get_state( ) const
 MctsNodePtr
 MctsNode::find_child( std::function< bool( const MctsState& ) > predicate ) const
 {
-    for ( auto& child : *m_children )
+    if ( m_children )
     {
-        if ( predicate( *( child->m_state ) ) )
+        for ( auto& child : *m_children )
         {
-            return child;
+            if ( predicate( *( child->m_state ) ) )
+            {
+                return child;
+            }
         }
     }
 

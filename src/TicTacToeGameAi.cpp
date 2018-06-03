@@ -39,6 +39,9 @@ TicTacToeGameAI::opponent_move( const MovePosition& position )
     auto current_node_strong_ref = m_current_node.lock( );
     TicTacToeState::Cell const state_cell{position.row, position.col};
 
+    // Ensure current node has children
+    current_node_strong_ref->choose_child( );
+
     // Get opponent child
     auto opponent_child
         = current_node_strong_ref->find_child( [&position]( const MctsState& state ) {

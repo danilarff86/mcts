@@ -1,13 +1,22 @@
 #include "TicTacToeGameAi.h"
 
+#include <ctime>
 #include <iostream>
+
+namespace
+{
+const bool srand_init = []( ) {
+    srand( static_cast< unsigned int >( time( NULL ) ) );
+    return true;
+}( );
+}
 
 int
 main( )
 {
     std::vector< std::vector< bool > > available( 3, std::vector< bool >( 3, true ) );
 
-    auto game = std::make_shared< mcts::TicTacToeGameAI >( available );
+    auto game = std::make_shared< mcts::TicTacToeGameAI >( available, 100 );
 
     bool cont = true;
     while ( cont )
