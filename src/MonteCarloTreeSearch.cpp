@@ -7,6 +7,7 @@
 #include <iterator>
 #include <memory>
 #include <vector>
+#include <functional>
 
 namespace
 {
@@ -24,6 +25,7 @@ struct State;
 struct MctsNode;
 
 using StatePtr = std::shared_ptr< State >;
+using StateConstPtr = std::shared_ptr< State const >;
 using MctsNodePtr = std::shared_ptr< MctsNode >;
 
 using Children = std::vector< MctsNodePtr >;
@@ -79,6 +81,12 @@ struct TicTacToeState : public State
     {
     }
 
+    const Cell&
+    getLastMove( ) const
+    {
+        return m_last_move;
+    }
+
     ChildrenPtr
     getChildren( MctsNodePtr parent ) override
     {
@@ -108,7 +116,8 @@ struct TicTacToeState : public State
     int
     simulate( ) override
     {
-        auto temp_state = std::make_shared< TicTacToeState >( *this );
+        auto temp_state = std::make_shared< TicTacToeState >( std::make_shared< Board >( *m_board ),
+                                                              m_my_turn, m_last_move );
 
         GameState game_state{};
 
@@ -197,8 +206,8 @@ private:
     static GameState
     gameState( TicTacToeState const& state, TicTacToeState const& temp_state )
     {
-        auto const& brd = *state.m_board;
-        auto const sz = state.m_board->size( );
+        auto const& brd = *temp_state.m_board;
+        auto const sz = temp_state.m_board->size( );
 
         auto cnt_available = 0;
 
@@ -238,12 +247,12 @@ private:
 
             if ( cnt_row_turn_true == sz || cnt_col_turn_true == sz )
             {
-                return state.m_my_turn ? GameState::e_State_Hit : GameState::e_state_Miss;
+                return !state.m_my_turn ? GameState::e_State_Hit : GameState::e_state_Miss;
             }
 
             if ( cnt_row_turn_false == sz || cnt_col_turn_false == sz )
             {
-                return !state.m_my_turn ? GameState::e_State_Hit : GameState::e_state_Miss;
+                return state.m_my_turn ? GameState::e_State_Hit : GameState::e_state_Miss;
             }
         }
 
@@ -277,12 +286,12 @@ private:
 
         if ( cnt_diagonal1_turn_true == sz || cnt_diagonal2_turn_true == sz )
         {
-            return state.m_my_turn ? GameState::e_State_Hit : GameState::e_state_Miss;
+            return /*!state.m_my_turn ? */GameState::e_State_Hit/* : GameState::e_state_Miss*/;
         }
 
         if ( cnt_diagonal1_turn_false == sz || cnt_diagonal2_turn_false == sz )
         {
-            return !state.m_my_turn ? GameState::e_State_Hit : GameState::e_state_Miss;
+            return /*state.m_my_turn ? */GameState::e_State_Hit/* : GameState::e_state_Miss*/;
         }
 
         return cnt_available > 0 ? GameState::e_State_InProgress : GameState::e_State_Draw;
@@ -312,6 +321,26 @@ struct MctsNode : public std::enable_shared_from_this< MctsNode >
         , m_misses( 0 )
         , m_total_trials( 0 )
     {
+    }
+
+    StateConstPtr
+    getState( ) const
+    {
+        return m_state;
+    }
+
+    MctsNodePtr
+    findChild( std::function< bool( StateConstPtr ) > predicate )
+    {
+        for (auto & child : *m_children)
+        {
+            if (predicate(child->m_state))
+            {
+                return child;
+            }
+        }
+
+        return {};
     }
 
     /* additional functions go here */
@@ -428,15 +457,16 @@ struct MctsNode : public std::enable_shared_from_this< MctsNode >
          * propagating. If it wasn't, then leave the sign of
          * the simulation the same.
          **/
-        if ( m_parent )
+        auto parent_strong_ref = m_parent.lock( );
+        if ( parent_strong_ref )
         {
-            m_parent->backPropagate( -simulation );
+            parent_strong_ref->backPropagate( -simulation );
         }
     }
 
 private:
     StatePtr m_state;
-    MctsNodePtr m_parent;
+    std::weak_ptr< MctsNode > m_parent;
 
     int m_hits;
     int m_misses;
@@ -462,10 +492,9 @@ TicTacToeGameAI::TicTacToeGameAI( const AvailableCells& available )
     auto state = std::make_shared< TicTacToeState >( board, true );
     m_tree = MctsNode::createMctsRoot( state );
 
-    // TODO: Implement
     // Play Move
     // Save move position
-    int iterations = 10;
+    int iterations = 100;
     while (iterations-- > 0)
     {
         m_tree->chooseChild( );
@@ -476,13 +505,34 @@ TicTacToeGameAI::TicTacToeGameAI( const AvailableCells& available )
 void
 TicTacToeGameAI::opponent_move( const Cell& cell )
 {
-    // TODO: Implement
+    auto current_node_strong_ref = m_current_node.lock( );
+    TicTacToeState::Cell const state_cell{cell.row, cell.col};
+
+    // Set evidence
+    auto opponent_child = current_node_strong_ref->findChild( [&cell]( StateConstPtr state_ptr ) {
+        auto ttt_state = std::dynamic_pointer_cast< TicTacToeState const >( state_ptr );
+        auto const& last_move = ttt_state->getLastMove( );
+        return last_move.row == cell.row && last_move.col == cell.col;
+    } );
+
+    // Play Move
+    // Save move position
+    int iterations = 100;
+    while ( iterations-- > 0 )
+    {
+        opponent_child->chooseChild( );
+    }
+    m_current_node = opponent_child->chooseChild( );
 }
 
 mcts::TicTacToeGameAI::Cell
 TicTacToeGameAI::get_my_move( ) const
 {
-    // TODO: Implement
-    return {};
+    auto cell
+        = std::dynamic_pointer_cast< TicTacToeState const >( m_current_node.lock( )->getState( ) )
+              ->getLastMove( );
+
+    return {cell.row, cell.col};
 }
+
 }
