@@ -10,14 +10,16 @@ int main()
     std::vector< std::vector< bool > > available( 3, std::vector< bool >( 3, true ) );
 
     auto game = std::make_shared< mcts::TicTacToeGameAI >( available );
-    auto ai_move = game->get_my_move( );
 
-    mcts::TicTacToeGameAI::Cell cell{};
     bool cont = true;
     while (cont)
     {
+        auto ai_move = game->get_my_move( );
+        std::cout << ai_move.row << " " << ai_move.col << std::endl;
+
+        mcts::TicTacToeGameAI::Cell cell;
+        std::cin >> cell.row >> cell.col;
         game->opponent_move( cell );
-        ai_move = game->get_my_move( );
     }
 
     std::cout << "Test!" << std::endl;
