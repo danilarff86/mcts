@@ -13,10 +13,10 @@ namespace
 {
 double const SQRT_OF_TWO = sqrt( 2 );
 
-const bool srand_init = []( ) {
-    srand( static_cast< unsigned int >( time( NULL ) ) );
-    return true;
-}( );
+// const bool srand_init = []( ) {
+//     srand( static_cast< unsigned int >( time( NULL ) ) );
+//     return true;
+// }( );
 }
 
 namespace mcts
