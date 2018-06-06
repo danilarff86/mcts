@@ -60,7 +60,7 @@ TicTacToeState::clone( ) const
     return std::unique_ptr< TicTacToeState >( new TicTacToeState( *this ) );
 }
 
-mcts::MctsState::Result
+MctsState::Result
 TicTacToeState::game_state( ) const
 {
     return game_state( m_board );
