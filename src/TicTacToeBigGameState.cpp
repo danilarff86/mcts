@@ -30,12 +30,12 @@ TicTacToeBigGameState::game_state( ) const
 TicTacToeState::Moves
 TicTacToeBigGameState::get_possible_moves( ) const
 {
-    auto last_board_coord = get_board_coord( m_last_move );
+    auto target_board_coord = get_cell_coord( m_last_move );
 
     Moves possible_moves;
 
-    if ( last_board_coord.row < 0
-         || m_results[ last_board_coord.row ][ last_board_coord.col ]
+    if ( target_board_coord.row < 0
+         || m_results[ target_board_coord.row ][ target_board_coord.col ]
                 != Result::e_Result_NotFinished )
     {
         // all boards are possible
@@ -55,7 +55,7 @@ TicTacToeBigGameState::get_possible_moves( ) const
     }
     else
     {
-        append_board_moves( possible_moves, last_board_coord.row, last_board_coord.col );
+        append_board_moves( possible_moves, target_board_coord.row, target_board_coord.col );
     }
 
     return std::move( possible_moves );
@@ -89,6 +89,18 @@ TicTacToeBigGameState::get_board_coord( const Cell& cell ) const
 
     auto const big_sz = static_cast< int >( m_board.size( ) );
     return {cell.row / big_sz, cell.col / big_sz};
+}
+
+TicTacToeBigGameState::Cell
+TicTacToeBigGameState::get_cell_coord( const Cell& cell ) const
+{
+    if ( cell.row < 0 )
+    {
+        return cell;
+    }
+
+    auto const big_sz = static_cast< int >( m_board.size( ) );
+    return {cell.row % big_sz, cell.col % big_sz};
 }
 
 void

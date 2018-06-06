@@ -21,6 +21,7 @@ private:
 
 private:
     Cell get_board_coord( const Cell& cell ) const;
+    Cell get_cell_coord( const Cell& cell ) const;
     void append_board_moves( Moves& moves, size_t row, size_t col ) const;
 
 private:
