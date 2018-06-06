@@ -1,5 +1,5 @@
 cmake_minimum_required (VERSION 2.6)
 set (CMAKE_CXX_STANDARD 11)
 project (MonteCarloTreeSearch)
-set(SOURCES main.cpp MctsNode.h MctsNode.cpp MctsState.h TicTacToeState.h TicTacToeState.cpp TicTacToeGameAi.h TicTacToeGameAi.cpp)
+set(SOURCES main.cpp MctsNode.h MctsNode.cpp MctsState.h TicTacToeState.h TicTacToeState.cpp TicTacToeBigGameState.h TicTacToeBigGameState.cpp TicTacToeGameAi.h TicTacToeGameAi.cpp)
 add_executable(monte_carlo_tree_search ${SOURCES})
