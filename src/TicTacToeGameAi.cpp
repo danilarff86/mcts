@@ -1,17 +1,18 @@
 #include "TicTacToeGameAi.h"
 #include "MctsNode.h"
-#include "TicTacToeState.h"
 
 #include <algorithm>
+#include <cmath>
 
 namespace mcts
 {
-TicTacToeGameAI::TicTacToeGameAI( const AvailableCells& available, size_t iterations )
-    : m_iterations( iterations )
+
+TicTacToeState::Board
+TicTacToeGameAI::create_small_board( const TicTacToeGameAI::AvailableCells& available )
 {
-    auto const sz = available.size( );
-    TicTacToeState::Board board( sz, TicTacToeState::Board::value_type( sz ) );
-    for ( size_t i = 0; i < sz; ++i )
+    TicTacToeState::Board board( SMALL_BOARD_SIZE,
+                                 TicTacToeState::Board::value_type( SMALL_BOARD_SIZE ) );
+    for ( size_t i = 0; i < SMALL_BOARD_SIZE; ++i )
     {
         std::transform( available[ i ].begin( ), available[ i ].end( ), board[ i ].begin( ),
                         []( bool val ) {
@@ -19,8 +20,44 @@ TicTacToeGameAI::TicTacToeGameAI( const AvailableCells& available, size_t iterat
                                        : TicTacToeState::CellState::e_Cell_Opponent;
                         } );
     }
+    return board;
+}
 
-    std::unique_ptr< TicTacToeState > state( new TicTacToeState( std::move( board ), true ) );
+TicTacToeBigGameState::BigBoard
+TicTacToeGameAI::create_big_board( const TicTacToeGameAI::AvailableCells& available )
+{
+    TicTacToeBigGameState::BigBoard big_board(
+        SMALL_BOARD_SIZE,
+        std::vector< TicTacToeState::Board >(
+            SMALL_BOARD_SIZE,
+            TicTacToeState::Board( SMALL_BOARD_SIZE, std::vector< TicTacToeState::CellState >(
+                                                         SMALL_BOARD_SIZE ) ) ) );
+    for ( size_t i = 0; i < SMALL_BOARD_SIZE; ++i )
+    {
+        for ( size_t j = 0; j < SMALL_BOARD_SIZE; ++j )
+        {
+            auto& brd = big_board[ i ][ j ];
+            for ( size_t i_cell = 0; i_cell < SMALL_BOARD_SIZE; ++i_cell )
+            {
+                for ( size_t j_cell = 0; j_cell < SMALL_BOARD_SIZE; ++j_cell )
+                {
+                    brd[ i_cell ][ j_cell ] = available[ i * SMALL_BOARD_SIZE + i_cell ]
+                                                       [ j * SMALL_BOARD_SIZE + j_cell ]
+                                                  ? TicTacToeState::CellState::e_Cell_Available
+                                                  : TicTacToeState::CellState::e_Cell_Opponent;
+                }
+            }
+        }
+    }
+    return big_board;
+}
+
+TicTacToeGameAI::TicTacToeGameAI( const AvailableCells& available, size_t iterations )
+    : m_iterations( iterations )
+{
+    std::unique_ptr< MctsState > state(
+        available.size( ) > 3 ? new TicTacToeBigGameState( create_big_board( available ), true )
+                              : new TicTacToeState( create_small_board( available ), true ) );
     m_tree = std::make_shared< MctsNode >( std::move( state ) );
 
     // Play Move
