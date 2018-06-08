@@ -2,13 +2,107 @@
 #include <cassert>
 #include <chrono>
 #include <cmath>
+#include <condition_variable>
 #include <ctime>
 #include <functional>
+#include <future>
 #include <iostream>
 #include <memory>
+#include <mutex>
+#include <queue>
+#include <thread>
 #include <vector>
 
 using namespace std;
+
+namespace threadpool
+{
+class ThreadPool
+{
+public:
+    ThreadPool( size_t );
+    template < class F, class... Args >
+    auto enqueue( F&& f, Args&&... args )
+        -> std::future< typename std::result_of< F( Args... ) >::type >;
+    ~ThreadPool( );
+
+private:
+    // need to keep track of threads so we can join them
+    std::vector< std::thread > workers;
+    // the task queue
+    std::queue< std::function< void( ) > > tasks;
+
+    // synchronization
+    std::mutex queue_mutex;
+    std::condition_variable condition;
+    bool stop;
+};
+
+// the constructor just launches some amount of workers
+inline ThreadPool::ThreadPool( size_t threads )
+    : stop( false )
+{
+    for ( size_t i = 0; i < threads; ++i )
+        workers.emplace_back( [this] {
+            for ( ;; )
+            {
+                std::function< void( ) > task;
+
+                {
+                    std::unique_lock< std::mutex > lock( this->queue_mutex );
+                    this->condition.wait( lock,
+                                          [this] { return this->stop || !this->tasks.empty( ); } );
+                    if ( this->stop && this->tasks.empty( ) )
+                        return;
+                    task = std::move( this->tasks.front( ) );
+                    this->tasks.pop( );
+                }
+
+                task( );
+            }
+        } );
+}
+
+// add new work item to the pool
+template < class F, class... Args >
+auto
+ThreadPool::enqueue( F&& f, Args&&... args )
+    -> std::future< typename std::result_of< F( Args... ) >::type >
+{
+    using return_type = typename std::result_of< F( Args... ) >::type;
+
+    auto task = std::make_shared< std::packaged_task< return_type( ) > >(
+        std::bind( std::forward< F >( f ), std::forward< Args >( args )... ) );
+
+    std::future< return_type > res = task->get_future( );
+    {
+        std::unique_lock< std::mutex > lock( queue_mutex );
+
+        // don't allow enqueueing after stopping the pool
+        if ( stop )
+            throw std::runtime_error( "enqueue on stopped ThreadPool" );
+
+        tasks.emplace( [task]( ) { ( *task )( ); } );
+    }
+    condition.notify_one( );
+    return res;
+}
+
+// the destructor joins all threads
+inline ThreadPool::~ThreadPool( )
+{
+    {
+        std::unique_lock< std::mutex > lock( queue_mutex );
+        stop = true;
+    }
+    condition.notify_all( );
+    for ( std::thread& worker : workers )
+        worker.join( );
+}
+
+static ThreadPool pool( std::thread::hardware_concurrency( ) );
+
+}  // namespace threadpool
 
 namespace game
 {
@@ -364,7 +458,20 @@ private:
     void
     run_simulation( )
     {
-        back_propagate( m_state->simulate( ) );
+        static const size_t BATCH_SIZE = 8;
+        std::vector< std::future< void > > results;
+
+        for ( size_t i = 0; i < BATCH_SIZE; ++i )
+        {
+            results.emplace_back( threadpool::pool.enqueue( [this] {
+                back_propagate( m_state->simulate( ) );
+            } ) );
+        }
+
+        for ( auto& result : results )
+        {
+            result.get( );
+        }
     }
 
     MctsNodePtr
@@ -421,10 +528,10 @@ private:
     double
     child_potential( const MctsNode& child ) const
     {
-        auto const w = child.m_hits + ( child.m_total_trials - child.m_hits - child.m_misses ) / 2;
-        auto const n = child.m_total_trials;
-        auto const c = SQRT_OF_TWO;
-        auto const t = m_total_trials;
+        int const w = child.m_hits + ( child.m_total_trials - child.m_hits - child.m_misses ) / 2;
+        int const n = child.m_total_trials;
+        double const c = SQRT_OF_TWO;
+        int const t = m_total_trials;
         return double( w ) / n + c * sqrt( log( double( t ) ) / n );
     }
 
@@ -432,9 +539,9 @@ private:
     std::unique_ptr< MctsState > m_state;
     std::weak_ptr< MctsNode > m_parent;
 
-    int m_hits;
-    int m_misses;
-    int m_total_trials;
+    std::atomic_int m_hits;
+    std::atomic_int m_misses;
+    std::atomic_int m_total_trials;
 
     ChildrenPtr m_children;
 };
