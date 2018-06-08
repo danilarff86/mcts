@@ -490,7 +490,7 @@ private:
         else
         {
             MctsNodePtr best_child;
-            auto best_potential = std::numeric_limits< double >::min( );
+            auto best_potential = std::numeric_limits< double >::lowest( );
             for ( auto child : *m_children )
             {
                 auto const potential = child_potential( *child );
@@ -528,7 +528,8 @@ private:
     double
     child_potential( const MctsNode& child ) const
     {
-        int const w = child.m_hits + ( child.m_total_trials - child.m_hits - child.m_misses ) / 2;
+        // int const w = child.m_hits + ( child.m_total_trials - child.m_hits - child.m_misses ) / 2;
+        int const w = child.m_hits - child.m_misses;
         int const n = child.m_total_trials;
         double const c = SQRT_OF_TWO;
         int const t = m_total_trials;
