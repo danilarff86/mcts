@@ -102,13 +102,107 @@ inline ThreadPool::~ThreadPool( )
 
 static ThreadPool pool( std::thread::hardware_concurrency( ) );
 
+struct AsyncWorker
+{
+    void
+    thread_fn( )
+    {
+        std::unique_lock< std::mutex > lock( m_mutex );
+
+        while ( true )
+        {
+            {
+                std::unique_lock< std::mutex > lock( m_mutex_started_waiting );
+                m_started_waiting = true;
+                m_cond_var_started_waiting.notify_all( );
+            }
+
+            // Wait for a notification.
+            m_cond_var.wait( lock, [&]( ) { return m_processing; } );
+            lock.unlock( );
+            while ( true )
+            {
+                m_fn( );
+                lock.lock( );
+                if ( !m_processing )
+                {
+                    break;
+                }
+                lock.unlock( );
+            }
+            if ( m_exit )
+            {
+                break;
+            }
+        }
+    }
+
+    AsyncWorker( std::function< void( ) > fn )
+        : m_fn( fn )
+        , m_started_waiting( false )
+        , m_processing( false )
+        , m_exit( false )
+    {
+        m_thread = std::thread( &AsyncWorker::thread_fn, this );
+        std::unique_lock< std::mutex > lock( m_mutex_started_waiting );
+        m_cond_var_started_waiting.wait( lock, [&]( ) { return m_started_waiting; } );
+    }
+
+    ~AsyncWorker( )
+    {
+        {
+            std::unique_lock< std::mutex > lock( m_mutex );
+            m_processing = false;
+            m_exit = true;
+            m_cond_var.notify_all( );
+        }
+        m_thread.join( );
+    }
+
+    void
+    processing( )
+    {
+        std::unique_lock< std::mutex > lock( m_mutex );
+        if (!m_processing)
+        {
+            m_processing = true;
+            m_cond_var.notify_all( );
+        }
+    }
+    void
+    idle( )
+    {
+        std::unique_lock< std::mutex > lock( m_mutex );
+        if ( m_processing )
+        {
+            m_processing = false;
+            m_cond_var.notify_all( );
+        }
+    }
+
+private:
+    std::function< void( ) > m_fn;
+
+    std::thread m_thread;
+
+    std::mutex m_mutex;
+    std::condition_variable m_cond_var;
+
+    std::mutex m_mutex_started_waiting;
+    std::condition_variable m_cond_var_started_waiting;
+
+    bool m_started_waiting;
+    bool m_processing;
+    bool m_exit;
+};
+
 }  // namespace threadpool
 
 namespace game
 {
 static const int SMALL_BRD_SZ = 3;
 
-double const SQRT_OF_TWO = sqrt( 2 );
+float const SQRT_OF_TWO = sqrt( 2 );
 
 using AvailableCells = std::vector< std::vector< bool > >;
 
@@ -151,13 +245,15 @@ enum class Result
 };
 
 Result
-game_state( Board< CellState > const& brd )
+game_state( Board< CellState > const& brd, bool big_board = false )
 {
     auto const sz = brd.size( );
     assert( sz == 3 );
     assert( brd[ 0 ].size( ) == 3 );
 
     auto cnt_available = 0;
+    auto cnt_all_mine = 0;
+    auto cnt_all_opponent = 0;
 
     // Check rows and cols
     for ( size_t i = 0; i < sz; ++i )
@@ -192,6 +288,9 @@ game_state( Board< CellState > const& brd )
                 break;
             }
         }
+
+        cnt_all_mine += cnt_row_mine;
+        cnt_all_opponent += cnt_row_opponent;
 
         if ( cnt_row_mine == sz || cnt_col_mine == sz )
         {
@@ -242,7 +341,20 @@ game_state( Board< CellState > const& brd )
         return Result::e_Result_Miss;
     }
 
-    return cnt_available > 0 ? Result::e_Result_NotFinished : Result::e_Result_Draw;
+    if ( cnt_available == 0 )
+    {
+        if ( big_board )
+        {
+            return cnt_all_mine > cnt_all_opponent
+                       ? Result::e_Result_Hit
+                       : cnt_all_mine < cnt_all_opponent ? Result::e_Result_Miss
+                                                         : Result::e_Result_Draw;
+        }
+
+        return Result::e_Result_Draw;
+    }
+
+    return Result::e_Result_NotFinished;
 }
 
 Cell
@@ -275,7 +387,7 @@ struct MctsState
 
         Result result = Result::e_Result_NotFinished;
 
-        while ( ( result = game::game_state( temp_state->m_big_board_states ) )
+        while ( ( result = game::game_state( temp_state->m_big_board_states, true ) )
                 == Result::e_Result_NotFinished )
         {
             auto const possible_moves = temp_state->get_possible_moves( );
@@ -312,12 +424,6 @@ struct MctsState
     }
 
 private:
-    Result
-    game_state( ) const
-    {
-        return game::game_state( m_big_board_states );
-    }
-
     Moves
     get_possible_moves( ) const
     {
@@ -362,7 +468,7 @@ private:
         auto& target_cell = target_board[ row_cell ][ col_cell ];
 
         target_cell = m_turn ? CellState::e_Mine : CellState::e_Opponent;
-        auto target_board_result = game::game_state( target_board );
+        auto target_board_result = game::game_state( target_board, false );
         if ( target_board_result != Result::e_Result_NotFinished )
         {
             m_big_board_states[ target_board_coord.row ][ target_board_coord.col ]
@@ -463,9 +569,8 @@ private:
 
         for ( size_t i = 0; i < BATCH_SIZE; ++i )
         {
-            results.emplace_back( threadpool::pool.enqueue( [this] {
-                back_propagate( m_state->simulate( ) );
-            } ) );
+            results.emplace_back(
+                threadpool::pool.enqueue( [this] { back_propagate( m_state->simulate( ) ); } ) );
         }
 
         for ( auto& result : results )
@@ -490,7 +595,7 @@ private:
         else
         {
             MctsNodePtr best_child;
-            auto best_potential = std::numeric_limits< double >::lowest( );
+            auto best_potential = std::numeric_limits< float >::lowest( );
             for ( auto child : *m_children )
             {
                 auto const potential = child_potential( *child );
@@ -528,12 +633,12 @@ private:
     double
     child_potential( const MctsNode& child ) const
     {
-        // int const w = child.m_hits + ( child.m_total_trials - child.m_hits - child.m_misses ) / 2;
-        int const w = child.m_hits - child.m_misses;
-        int const n = child.m_total_trials;
-        double const c = SQRT_OF_TWO;
-        int const t = m_total_trials;
-        return double( w ) / n + c * sqrt( log( double( t ) ) / n );
+        float const w = child.m_total_trials - child.m_misses - child.m_misses;
+        // float const w = child.m_hits - child.m_misses;
+        float const n = child.m_total_trials;
+        static float const c = SQRT_OF_TWO - 1.2;
+        float const t = m_total_trials;
+        return w / n + c * sqrt( log( t ) / n );
     }
 
 private:
@@ -550,6 +655,7 @@ private:
 struct TicTacToeGameAI
 {
     explicit TicTacToeGameAI( const Cell& opponent_move = {-1, -1} )
+        //: m_worker( [this]( ) { m_current_node.lock( )->choose_child( ); } )
     {
         Board< Board< CellState > > board(
             SMALL_BRD_SZ,
@@ -575,11 +681,19 @@ struct TicTacToeGameAI
                               + std::chrono::milliseconds( 995 );
 
         make_move( m_tree, end_time );
+
+        //m_worker.processing( );
     }
 
     void
     opponent_move( const Cell& position )
     {
+        auto const end_time = std::chrono::duration_cast< std::chrono::milliseconds >(
+                                  std::chrono::system_clock::now( ).time_since_epoch( ) )
+                              + std::chrono::milliseconds( 120 );
+
+        //m_worker.idle( );
+
         auto current_node_strong_ref = m_current_node.lock( );
 
         // Ensure current node has children
@@ -589,10 +703,9 @@ struct TicTacToeGameAI
         auto opponent_child = current_node_strong_ref->find_child(
             [&position]( const MctsState& state ) { return state.get_last_move( ) == position; } );
 
-        auto const end_time = std::chrono::duration_cast< std::chrono::milliseconds >(
-                                  std::chrono::system_clock::now( ).time_since_epoch( ) )
-                              + std::chrono::milliseconds( 95 );
         make_move( opponent_child, end_time );
+
+        //m_worker.processing( );
     }
 
     Cell
@@ -618,6 +731,7 @@ private:
 private:
     MctsNodePtr m_tree;
     std::weak_ptr< MctsNode > m_current_node;
+    //threadpool::AsyncWorker m_worker;
 };
 }  // namespace game
 
