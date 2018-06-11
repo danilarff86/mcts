@@ -163,7 +163,7 @@ struct AsyncWorker
     processing( )
     {
         std::unique_lock< std::mutex > lock( m_mutex );
-        if (!m_processing)
+        if ( !m_processing )
         {
             m_processing = true;
             m_cond_var.notify_all( );
@@ -228,20 +228,20 @@ operator==( const Cell& rhs, const Cell& lhs )
 
 using Moves = std::vector< Cell >;
 
-enum class CellState
+enum class CellState : uint8_t
 {
-    e_Available,
-    e_Opponent,
-    e_Mine,
-    e_Common
+    e_Available = 0,
+    e_Opponent = 1,
+    e_Mine = 2,
+    e_Common = 3
 };
 
-enum class Result
+enum class Result : uint8_t
 {
-    e_Result_Draw = 0,
-    e_Result_Miss,
-    e_Result_Hit,
-    e_Result_NotFinished,
+    e_Result_NotFinished = 0,
+    e_Result_Miss = 1,
+    e_Result_Draw = 2,
+    e_Result_Hit = 3,
 };
 
 Result
@@ -655,7 +655,7 @@ private:
 struct TicTacToeGameAI
 {
     explicit TicTacToeGameAI( const Cell& opponent_move = {-1, -1} )
-        //: m_worker( [this]( ) { m_current_node.lock( )->choose_child( ); } )
+    //: m_worker( [this]( ) { m_current_node.lock( )->choose_child( ); } )
     {
         Board< Board< CellState > > board(
             SMALL_BRD_SZ,
@@ -682,7 +682,7 @@ struct TicTacToeGameAI
 
         make_move( m_tree, end_time );
 
-        //m_worker.processing( );
+        // m_worker.processing( );
     }
 
     void
@@ -692,7 +692,7 @@ struct TicTacToeGameAI
                                   std::chrono::system_clock::now( ).time_since_epoch( ) )
                               + std::chrono::milliseconds( 120 );
 
-        //m_worker.idle( );
+        // m_worker.idle( );
 
         auto current_node_strong_ref = m_current_node.lock( );
 
@@ -705,7 +705,7 @@ struct TicTacToeGameAI
 
         make_move( opponent_child, end_time );
 
-        //m_worker.processing( );
+        // m_worker.processing( );
     }
 
     Cell
@@ -718,20 +718,18 @@ private:
     void
     make_move( MctsNodePtr node, std::chrono::milliseconds end_time )
     {
-        auto current_time = std::chrono::duration_cast< std::chrono::milliseconds >(
-            std::chrono::system_clock::now( ).time_since_epoch( ) );
-        while ( current_time < end_time )
+        while ( std::chrono::duration_cast< std::chrono::milliseconds >(
+                    std::chrono::system_clock::now( ).time_since_epoch( ) )
+                < end_time )
         {
             m_current_node = node->choose_child( );
-            current_time = std::chrono::duration_cast< std::chrono::milliseconds >(
-                std::chrono::system_clock::now( ).time_since_epoch( ) );
         }
     }
 
 private:
     MctsNodePtr m_tree;
     std::weak_ptr< MctsNode > m_current_node;
-    //threadpool::AsyncWorker m_worker;
+    // threadpool::AsyncWorker m_worker;
 };
 }  // namespace game
 
