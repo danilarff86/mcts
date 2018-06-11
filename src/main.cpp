@@ -308,7 +308,7 @@ private:
             }
 
             // Col
-            switch ( ( board << ( i * 2 ) ) & COL_MASK )
+            switch ( ( board >> ( i * 2 ) ) & COL_MASK )
             {
             case 0x1041:
                 return {Result::e_Result_Miss, Result::e_Result_Miss};
@@ -427,6 +427,31 @@ struct MctsState
     get_last_move( ) const
     {
         return m_last_move;
+    }
+
+    inline const std::string
+    get_small_boards_states( )
+    {
+        std::string res;
+        for ( uint8_t i = 0; i < SZ_NUM_BOARDS_BIG; ++i )
+        {
+            switch ( get_small_brd_state( i ) )
+            {
+            case Result::e_Result_NotFinished:
+                res += "-";
+                break;
+            case Result::e_Result_Miss:
+                res += "M";
+                break;
+            case Result::e_Result_Hit:
+                res += "H";
+                break;
+            case Result::e_Result_Draw:
+                res += "D";
+                break;
+            }
+        }
+        return res;
     }
 
 private:
@@ -561,6 +586,8 @@ struct MctsNode : std::enable_shared_from_this< MctsNode >
         };
 
         out << "Simulations hits/total: " << m_hits << "/" << m_total_trials << std::endl;
+        out << "Small boards state: \"" << m_state->get_small_boards_states( ).c_str( ) << "\""
+            << std::endl;
         out << "-------------------------" << std::endl;
         out << "Potential moves:" << std::endl;
         print_top_moves( *this, false );
