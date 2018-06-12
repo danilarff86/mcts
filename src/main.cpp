@@ -428,6 +428,8 @@ struct MctsState
             temp_state.play_move( possible_moves[ rand( ) % possible_moves_count ] );
         }
 
+        // m_turn == true - transition to this node is done from the opponent's node (opponent
+        // move). So for opponent result should be inverted
         return m_turn ? toggle_result( result ) : result;
     }
 
@@ -556,7 +558,7 @@ struct MctsNode : std::enable_shared_from_this< MctsNode >
     {
         auto& out = std::cerr;
 
-        auto print_top_moves = [&out]( MctsNode const& node,
+        auto print_top_moves = [&out, &node_selected]( MctsNode const& node,
                                        size_t max_children = 5 ) {
             struct Statistics
             {
@@ -564,6 +566,7 @@ struct MctsNode : std::enable_shared_from_this< MctsNode >
                 int hits;
                 int total;
                 double win_rate;
+                bool chosen;
 
                 bool
                 operator<( const Statistics& rhs )
@@ -580,6 +583,8 @@ struct MctsNode : std::enable_shared_from_this< MctsNode >
                 stat[ i ].hits = child.m_hits;
                 stat[ i ].total = child.m_total_trials;
                 stat[ i ].win_rate = double( stat[ i ].hits ) * 100. / double( stat[ i ].total );
+                stat[ i ].chosen = child.get_state( ).get_last_move( )
+                         == node_selected.get_state( ).get_last_move( );
             }
 
             std::sort( stat.begin( ), stat.end( ) );
@@ -587,7 +592,8 @@ struct MctsNode : std::enable_shared_from_this< MctsNode >
             for ( size_t i = 0; i < max_children && i < stat.size( ); ++i )
             {
                 auto const& entry = stat[ i ];
-                out << "'" << entry.cell.row << " " << entry.cell.col
+
+                out << ( entry.chosen ? "*" : "" ) << "'" << entry.cell.row << " " << entry.cell.col
                     << "' - win rate: " << entry.win_rate << "%, hits/total: " << entry.hits << "/"
                     << entry.total << std::endl;
             }
