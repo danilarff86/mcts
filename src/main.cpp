@@ -558,15 +558,13 @@ struct MctsNode : std::enable_shared_from_this< MctsNode >
     {
         auto& out = std::cerr;
 
-        auto print_top_moves = [&out, &node_selected]( MctsNode const& node,
-                                       size_t max_children = 5 ) {
+        auto print_top_moves = [&out]( MctsNode const& node, size_t max_children = 5 ) {
             struct Statistics
             {
                 Cell cell;
                 int hits;
                 int total;
                 double win_rate;
-                bool chosen;
 
                 bool
                 operator<( const Statistics& rhs )
@@ -583,8 +581,6 @@ struct MctsNode : std::enable_shared_from_this< MctsNode >
                 stat[ i ].hits = child.m_hits;
                 stat[ i ].total = child.m_total_trials;
                 stat[ i ].win_rate = double( stat[ i ].hits ) * 100. / double( stat[ i ].total );
-                stat[ i ].chosen = child.get_state( ).get_last_move( )
-                         == node_selected.get_state( ).get_last_move( );
             }
 
             std::sort( stat.begin( ), stat.end( ) );
@@ -592,8 +588,7 @@ struct MctsNode : std::enable_shared_from_this< MctsNode >
             for ( size_t i = 0; i < max_children && i < stat.size( ); ++i )
             {
                 auto const& entry = stat[ i ];
-
-                out << ( entry.chosen ? "*" : "" ) << "'" << entry.cell.row << " " << entry.cell.col
+                out << "'" << entry.cell.row << " " << entry.cell.col
                     << "' - win rate: " << entry.win_rate << "%, hits/total: " << entry.hits << "/"
                     << entry.total << std::endl;
             }
@@ -739,7 +734,7 @@ private:
         WeightType const w = child.m_hits;
         // float const w = child.m_hits - child.m_misses;
         WeightType const n = child.m_total_trials;
-        static WeightType const c = SQRT_OF_TWO;
+        static WeightType const c = SQRT_OF_TWO / 4;
         WeightType const t = m_total_trials;
         return w / n + c * sqrt( log( t ) / n );
     }
@@ -824,9 +819,7 @@ private:
         }
 
         auto strong_ref = m_current_node.lock( );
-
         strong_ref->remove_parent_link( );
-
         node->print_details( *strong_ref );
     }
 
