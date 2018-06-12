@@ -266,6 +266,14 @@ enum class Result : uint8_t
     e_Result_Draw = 3
 };
 
+inline Result
+toggle_result( Result result )
+{
+    return result == Result::e_Result_Hit
+               ? result = Result::e_Result_Miss
+               : result == Result::e_Result_Miss ? result = Result::e_Result_Hit : result;
+}
+
 struct GameBoardArrangements
 {
     struct BoardResults
@@ -420,7 +428,7 @@ struct MctsState
             temp_state.play_move( possible_moves[ rand( ) % possible_moves_count ] );
         }
 
-        return result;
+        return m_turn ? toggle_result( result ) : result;
     }
 
     inline const uint8_t
@@ -548,7 +556,7 @@ struct MctsNode : std::enable_shared_from_this< MctsNode >
     {
         auto& out = std::cerr;
 
-        auto print_top_moves = [&out]( MctsNode const& node, bool opponent,
+        auto print_top_moves = [&out]( MctsNode const& node,
                                        size_t max_children = 5 ) {
             struct Statistics
             {
@@ -569,7 +577,7 @@ struct MctsNode : std::enable_shared_from_this< MctsNode >
             {
                 auto const& child = *( node.m_children[ i ] );
                 stat[ i ].cell = index2cell[ child.get_state( ).get_last_move( ) ];
-                stat[ i ].hits = opponent ? child.m_misses : child.m_hits;
+                stat[ i ].hits = child.m_hits;
                 stat[ i ].total = child.m_total_trials;
                 stat[ i ].win_rate = double( stat[ i ].hits ) * 100. / double( stat[ i ].total );
             }
@@ -590,10 +598,10 @@ struct MctsNode : std::enable_shared_from_this< MctsNode >
             << std::endl;
         out << "-------------------------" << std::endl;
         out << "Potential moves:" << std::endl;
-        print_top_moves( *this, false );
+        print_top_moves( *this );
         out << "-------------------------" << std::endl;
         out << "Potential opponent moves:" << std::endl;
-        print_top_moves( node_selected, true );
+        print_top_moves( node_selected );
         out << "-------------------------" << std::endl;
     }
 
@@ -683,8 +691,8 @@ private:
     inline void
     run_simulation( )
     {
-        // back_propagate( m_state->simulate( ) );
-        static const size_t BATCH_SIZE = 8;
+        back_propagate( m_state->simulate( ) );
+        /*static const size_t BATCH_SIZE = 8;
         std::vector< std::future< void > > results;
 
         for ( size_t i = 0; i < BATCH_SIZE; ++i )
@@ -696,7 +704,7 @@ private:
         for ( auto& result : results )
         {
             result.get( );
-        }
+        }*/
     }
 
     inline void
@@ -715,7 +723,7 @@ private:
         auto parent_strong_ref = m_parent.lock( );
         if ( parent_strong_ref )
         {
-            parent_strong_ref->back_propagate( result );
+            parent_strong_ref->back_propagate( toggle_result( result ) );
         }
     }
 
@@ -809,7 +817,11 @@ private:
             m_current_node = node->choose_child( );
         }
 
-        node->print_details( *( m_current_node.lock( ) ) );
+        auto strong_ref = m_current_node.lock( );
+
+        strong_ref->remove_parent_link( );
+
+        node->print_details( *strong_ref );
     }
 
 private:
